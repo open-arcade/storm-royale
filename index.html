@@ -217,10 +217,23 @@ function push(e){
  for(const w of walls){const qx=clamp(e.x,w.x,w.x+w.w),qy=clamp(e.y,w.y,w.y+w.h),dx=e.x-qx,dy=e.y-qy,d=Math.hypot(dx,dy);if(d<e.r){if(d>0){e.x=qx+dx/d*e.r;e.y=qy+dy/d*e.r}else e.x+=e.r*2}}
  e.x=clamp(e.x,e.r,MW-e.r);e.y=clamp(e.y,e.r,MH-e.r);
  if(MODE==='br'){const dx=e.x-1600,dy=e.y-1600,d=Math.hypot(dx,dy),l=isL(Math.atan2(dy,dx))-e.r-20;if(d>l&&d>0){e.x=1600+dx/d*l;e.y=1600+dy/d*l}}}
-function blocked(x1,y1,x2,y2){const n=Math.ceil(Math.hypot(x2-x1,y2-y1)/12);for(let i=1;i<n;i++){const x=x1+(x2-x1)*i/n,y=y1+(y2-y1)*i/n;
+function segRect(x1,y1,x2,y2,w){let t0=0,t1=1;const dx=x2-x1,dy=y2-y1;
+ for(const[p,q,mn,mx]of[[x1,dx,w.x,w.x+w.w],[y1,dy,w.y,w.y+w.h]]){
+  if(Math.abs(q)<1e-9){if(p<mn||p>mx)return Infinity}
+  else{let a=(mn-p)/q,b=(mx-p)/q;if(a>b){const t=a;a=b;b=t}t0=Math.max(t0,a);t1=Math.min(t1,b);if(t0>t1)return Infinity}}
+ return t0}
+function segCirc(x1,y1,x2,y2,cx,cy,r){const dx=x2-x1,dy=y2-y1,fx=x1-cx,fy=y1-cy,a=dx*dx+dy*dy,c=fx*fx+fy*fy-r*r;if(c<=0)return 0;if(a<1e-9)return Infinity;
+ const bq=fx*dx+fy*dy,disc=bq*bq-a*c;if(disc<0)return Infinity;const t=(-bq-Math.sqrt(disc))/a;return t>=0&&t<=1?t:Infinity}
+function wallOn(x1,y1,x2,y2){let n=null,bt=Infinity;for(const w of walls){const t=segRect(x1,y1,x2,y2,w);if(t<bt){bt=t;n=w}}return n&&n.hp<1e8?n:null}
+function blocked(x1,y1,x2,y2,ign){const n=Math.ceil(Math.hypot(x2-x1,y2-y1)/12);for(let i=1;i<n;i++){const x=x1+(x2-x1)*i/n,y=y1+(y2-y1)*i/n;
  for(const t of trees)if((x-t.x)**2+(y-t.y)**2<t.r*t.r)return true;
- for(const w of walls)if(x>w.x&&x<w.x+w.w&&y>w.y&&y<w.y+w.h)return true}return false}
-function shoot(p){const w=WP[p.wp];p.cd=w.rate;p.rc=1;p.rv=1.2;spark(p.x+Math.cos(p.ang)*w.len,p.y+Math.sin(p.ang)*w.len,'#fde68a',p.wp===2?4:2);for(let i=0;i<w.pel;i++){const a=p.ang+(Math.random()-.5)*2*(w.spr+(p.bot?.06/p.skill:0));B.push({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*w.spd,vy:Math.sin(a)*w.spd,d:w.d,l:w.rng/w.spd,o:p,px:0,py:0,s:p===me&&BTs.id!=='default'?BTs:null})}}
+ for(const w of walls){if(ign&&w.hp<1e8)continue;if(x>w.x&&x<w.x+w.w&&y>w.y&&y<w.y+w.h)return true}}return false}
+function shoot(p){const w=WP[p.wp];p.cd=w.rate;p.rc=1;p.rv=1.2;
+ {const tx=p.x+Math.cos(p.ang)*w.len,ty=p.y+Math.sin(p.ang)*w.len;let bt=Infinity,bw=null,tr=false;
+  for(const q of walls){const t=segRect(p.x,p.y,tx,ty,q);if(t<bt){bt=t;bw=q;tr=false}}
+  for(const q of trees){const t=segCirc(p.x,p.y,tx,ty,q.x,q.y,q.r);if(t<bt){bt=t;bw=q;tr=true}}
+  if(bw){const hx=p.x+(tx-p.x)*bt,hy=p.y+(ty-p.y)*bt;if(!tr&&bw.hp<1e8)bw.hp-=w.d*w.pel;spark(hx,hy,'#fde68a',3);return}}
+spark(p.x+Math.cos(p.ang)*w.len,p.y+Math.sin(p.ang)*w.len,'#fde68a',p.wp===2?4:2);for(let i=0;i<w.pel;i++){const a=p.ang+(Math.random()-.5)*2*(w.spr+(p.bot?.06/p.skill:0));B.push({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*w.spd,vy:Math.sin(a)*w.spd,d:w.d,l:w.rng/w.spd,o:p,px:0,py:0,s:p===me&&BTs.id!=='default'?BTs:null})}}
 function build(p){if(p.wood<10||!p.alive)return false;const a=p.ang,bx=p.x+Math.cos(a)*46,by=p.y+Math.sin(a)*46,v=Math.abs(Math.cos(a))>Math.abs(Math.sin(a)),w=v?14:90,h=v?90:14;walls.push({x:bx-w/2,y:by-h/2,w,h,hp:150,mh:150});p.wood-=10;return true}
 function gun(g,i,col){
  g.save();g.lineJoin='round';g.lineWidth=1.4;g.strokeStyle='#111';
@@ -267,6 +280,7 @@ function think(b){
  let best=null,bd=650;
  for(const q of P)if(q!==b&&q.alive&&foe(b,q)){const d=Math.hypot(q.x-b.x,q.y-b.y);if(d<bd&&(MODE!=='br'||!q.inb||q.rv>0||d<110||q.inb===b.inb)&&!blocked(b.x,b.y,q.x,q.y)){best=q;bd=d}}
  b.en=best;
+ if(!best&&!b.brk){let hd=450,hw=null;for(const q of P)if(q!==b&&q.alive&&foe(b,q)&&(MODE!=='br'||!q.inb||q.rv>0||q.inb===b.inb)){const d=Math.hypot(q.x-b.x,q.y-b.y);if(d<hd&&!blocked(b.x,b.y,q.x,q.y,true)){const w=wallOn(b.x,b.y,q.x,q.y);if(w){hd=d;hw=w}}}if(hw){b.brk=hw;b.brkT=4}}
  const stuck=Math.hypot(b.x-b.lx,b.y-b.ly)<10&&!best;b.lx=b.x;b.ly=b.y;
  if(stuck){const a=rnd(0,TAU);b.gx=clamp(b.x+Math.cos(a)*300,100,MW-100);b.gy=clamp(b.y+Math.sin(a)*300,100,MH-100);b.det=1.3;return}
  if(b.det>0)return;
@@ -275,8 +289,8 @@ function think(b){
  if(best){if(Math.random()<.35)b.sg=-b.sg;return}
  let n=null,nd=550;for(const k of pk)if(want(b,k)){const d=Math.hypot(k.x-b.x,k.y-b.y);if(d<nd){n=k;nd=d}}
  if(n){b.gx=n.x;b.gy=n.y}else if(Math.hypot(b.gx-b.x,b.gy-b.y)<40){const a=rnd(0,TAU),d=rnd(200,600);b.gx=clamp(b.x+Math.cos(a)*d,100,MW-100);b.gy=clamp(b.y+Math.sin(a)*d,100,MH-100);if(Math.hypot(b.gx-S.tx,b.gy-S.ty)>S.tr*.85){b.gx=S.tx;b.gy=S.ty}}}
-function steer(b,g){const L=Math.min(90,Math.hypot(b.gx-b.x,b.gy-b.y));if(!blocked(b.x,b.y,b.x+Math.cos(g)*L,b.y+Math.sin(g)*L))return g;
- const s=b.sd||(b.sd=Math.random()<.5?1:-1);for(const o of[.6,1.2,1.9,2.6])for(const q of[s,-s]){const a=g+o*q;if(!blocked(b.x,b.y,b.x+Math.cos(a)*90,b.y+Math.sin(a)*90))return a}return g}
+function steer(b,g){const L=Math.min(90,Math.hypot(b.gx-b.x,b.gy-b.y));if(!blocked(b.x,b.y,b.x+Math.cos(g)*L,b.y+Math.sin(g)*L,true))return g;
+ const s=b.sd||(b.sd=Math.random()<.5?1:-1);for(const o of[.6,1.2,1.9,2.6])for(const q of[s,-s]){const a=g+o*q;if(!blocked(b.x,b.y,b.x+Math.cos(a)*90,b.y+Math.sin(a)*90,true))return a}return g}
 function botUp(b,dt){
  b.t-=dt;b.det-=dt;if(b.t<=0){b.t=rnd(.35,.6);think(b);if(MODE==='br'){const q=toIsl(b.gx,b.gy,140);b.gx=q[0];b.gy=q[1]}}
  const e=b.en&&b.en.alive&&!b.carry?b.en:null;let mx=0,my=0;
@@ -284,7 +298,10 @@ function botUp(b,dt){
   b.ang+=clamp(da,-3.2*dt*b.skill,3.2*dt*b.skill);const f=ed>ideal?1:ed<ideal*.5?-1:0;mx=ex/ed*f-ey/ed*b.sg*.8;my=ey/ed*f+ex/ed*b.sg*.8;
   if(Math.abs(da)<.12&&ed<w.rng*.95&&b.cd<=0)shoot(b);
   if(b.hit>0&&b.wood>=10&&b.bcd<=0&&Math.random()<dt*2){const o=b.ang;b.ang=ta;build(b);b.ang=o;b.bcd=3}}
- else{const dx=b.gx-b.x,dy=b.gy-b.y,d=Math.hypot(dx,dy);if(d>20){const a=MODE==='br'?Math.atan2(dy,dx):steer(b,Math.atan2(dy,dx));mx=Math.cos(a);my=Math.sin(a);b.ang+=clamp(ad(a,b.ang),-4*dt,4*dt)}}
+ else{if(b.brk&&(b.brk.hp<=0||(b.brkT-=dt)<=0||!walls.includes(b.brk)))b.brk=null;
+  const dx=b.gx-b.x,dy=b.gy-b.y,d=Math.hypot(dx,dy);if(d>20){const a=steer(b,Math.atan2(dy,dx));mx=Math.cos(a);my=Math.sin(a);b.ang+=clamp(ad(a,b.ang),-4*dt,4*dt);
+   if(!b.brk){const w=wallOn(b.x,b.y,b.x+mx*(b.r+30),b.y+my*(b.r+30));if(w){b.brk=w;b.brkT=4}}}
+  if(b.brk){const w=b.brk,ta=Math.atan2(w.y+w.h/2-b.y,w.x+w.w/2-b.x),da=ad(ta,b.ang);b.ang+=clamp(da,-6*dt,6*dt);mx=my=0;if(Math.abs(da)<.15&&b.cd<=0)shoot(b)}}
  const m=Math.hypot(mx,my);if(m>0){b.x+=mx/m*150*dt;b.y+=my/m*150*dt}}
 
 function stormUp(dt){const p=PH[S.ph];S.t+=dt;
@@ -305,12 +322,13 @@ function update(dt){T+=dt;
   for(let i=pk.length-1;i>=0;i--){const k=pk[i];if(Math.abs(k.x-p.x)>26||Math.abs(k.y-p.y)>26||!want(p,k))continue;
    pk.splice(i,1);if(k.fx&&MODE!=='br')RQ.push({x:k.x,y:k.y,k:k.k,i:k.i,t:25});if(k.k==='c'){spill(k.x,k.y,[rpk(0,0,1),rpk(0,0,1),rpk(0,0,0)]);if(p===me)toast('📦 Chest opened')}else if(k.k==='w'){p.wp=k.i;p.inv[k.i]=true;if(p===me)toast('🔫 '+WP[k.i].n)}else if(k.k==='h')p.hp=Math.min(100,p.hp+40);else if(k.k==='s')p.sh=Math.min(100,p.sh+35);else p.wood=Math.min(99,p.wood+(k.n||25))}}
  for(let i=B.length-1;i>=0;i--){const b=B[i];let dead=false;b.px=b.x;b.py=b.y;if(b.s&&b.s.pr)spawnBP(TR,b.x,b.y,b.s);
-  for(let s=0;s<3&&!dead;s++){b.x+=b.vx*dt/3;b.y+=b.vy*dt/3;
-   for(const p of P)if(p.alive&&p!==b.o&&foe(b.o,p)&&(p.x-b.x)**2+(p.y-b.y)**2<(p.r+3)**2){hit(p,b.d,b.o);dead=true;break}
-   if(dead)break;
-   for(const w of walls)if(b.x>w.x&&b.x<w.x+w.w&&b.y>w.y&&b.y<w.y+w.h){if(w.hp<1e8)w.hp-=b.d;dead=true;break}
-   if(dead)break;
-   for(const t of trees)if((b.x-t.x)**2+(b.y-t.y)**2<t.r*t.r){dead=true;b.o.wood=Math.min(99,b.o.wood+(b.o.wood<99?1:0));break}}
+  const x0=b.x,y0=b.y,x1=x0+b.vx*dt,y1=y0+b.vy*dt;let bt=Infinity,kind=0,obj=null;
+  for(const p of P)if(p.alive&&p!==b.o&&foe(b.o,p)){const t=segCirc(x0,y0,x1,y1,p.x,p.y,p.r+3);if(t<bt){bt=t;kind=1;obj=p}}
+  for(const w of walls){const t=segRect(x0,y0,x1,y1,w);if(t<bt){bt=t;kind=2;obj=w}}
+  for(const t0 of trees){const t=segCirc(x0,y0,x1,y1,t0.x,t0.y,t0.r);if(t<bt){bt=t;kind=3;obj=t0}}
+  if(kind){dead=true;b.x=x0+(x1-x0)*bt;b.y=y0+(y1-y0)*bt;
+   if(kind===1)hit(obj,b.d,b.o);else if(kind===2){if(obj.hp<1e8)obj.hp-=b.d}else b.o.wood=Math.min(99,b.o.wood+(b.o.wood<99?1:0))}
+  else{b.x=x1;b.y=y1}
   b.l-=dt;if(dead&&MODE!=='br')splat(b.x,b.y,b.o.team);if(dead||b.l<=0)B.splice(i,1)}
  for(let i=walls.length-1;i>=0;i--){const w=walls[i];if(w.hp<=0){const cx=w.x+w.w/2,cy=w.y+w.h/2;pk.push({x:cx,y:cy,k:'o',i:0,n:10});spark(cx,cy,'#a8692b',9);spark(cx,cy,'#e9c48f',4);walls.splice(i,1)}}
  tickTrail(TR,dt);shake*=Math.pow(.01,dt);
